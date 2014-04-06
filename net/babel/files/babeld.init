@@ -2,7 +2,7 @@
 
 START=70
 
-PID_F='/var/run/babeld.pid'
+pidfile='/var/run/babeld.pid'
 EXTRA_COMMANDS="status"
 EXTRA_HELP="        status Dump Babel's table to the log file."
 
@@ -31,6 +31,12 @@ append_bool() {
 	local _loctmp
 	config_get_bool _loctmp "$section" "$option" 0
 	[ "$_loctmp" -gt 0 ] && append args "$value"
+}
+
+append_switch() {
+	local value="$1"
+	local switch="$2"
+	append args "$switch $value"
 }
 
 append_parm() {
@@ -98,6 +104,7 @@ babel_config() {
 	append_bool "$cfg" 'assume_wireless' '-w'
 	append_bool "$cfg" 'no_split_horizon' '-s'
 	append_bool "$cfg" 'keep_unfeasible' '-u'
+	append_bool "$cfg" 'random_router_id' '-r'
 
 	append_parm "$cfg" 'multicast_address' '-m'
 	append_parm "$cfg" 'port' '-p'
@@ -105,12 +112,13 @@ babel_config() {
 	append_parm "$cfg" 'hello_interval' '-h'
 	append_parm "$cfg" 'wired_hello_interval' '-H'
 	append_parm "$cfg" 'diversity' '-z'
+	append_parm "$cfg" 'smoothing_half_time' '-M'
 	append_parm "$cfg" 'kernel_priority' '-k'
 	append_parm "$cfg" 'duplication_priority' '-A'
 	append_parm "$cfg" 'debug' '-d'
 	append_parm "$cfg" 'local_server' '-g'
 	append_parm "$cfg" 'export_table' '-t'
-	append_parm "$cfg" 'import_table' '-T'
+	config_list_foreach "$cfg" 'import_table' append_switch '-T'
 	append_parm "$cfg" 'conf_file' '-c'
 	append_parm "$cfg" 'log_file' '-L'
 }
@@ -124,13 +132,19 @@ start() {
 	config_foreach babel_addif interface
 	config_foreach babel_filter filter
 	[ -z "$interfaces" ] && return 0
-	eval "/usr/sbin/babeld -D -I $PID_F $args $interfaces"
+	eval "/usr/sbin/babeld -D -I $pidfile $args $interfaces"
 }
 
 stop() {
-	[ -f $PID_F ] && kill $(cat $PID_F)
+	[ -f "$pidfile" ] && kill $(cat $pidfile)
+  # avoid race-condition on restart: wait for
+  # babeld to die for real.
+  [ -f "$pidfile" ] && sleep 1
+  [ -f "$pidfile" ] && sleep 1
+  [ -f "$pidfile" ] && sleep 1
+  [ -f "$pidfile" ] && exit 42
 }
 
 status() {
-	[ -f $PID_F ] && kill -USR1 $(cat $PID_F)
+	[ -f "$pidfile" ] && kill -USR1 $(cat $pidfile)
 }
